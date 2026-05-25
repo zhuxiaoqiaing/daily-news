@@ -9,9 +9,10 @@ SMTP_USER = os.environ.get("SMTP_USER")
 SMTP_PASS = os.environ.get("SMTP_PASS")
 EMAIL_TO = os.environ.get("EMAIL_TO")
 
-AI = ["AI","ai","人工智能","大模型","ChatGPT","GPT","Claude","Gemini","OpenAI","DeepSeek",
-      "芯片","GPU","算力","自动驾驶","机器人","LLM","文心","通义","豆包","Kimi",
-      "Sora","AIGC","生成式","智能体","Agent","英伟达","NVIDIA","多模态","MCP","NL2SQL"]
+AI = ["人工智能","大模型","ChatGPT","GPT-4","Claude","Gemini","OpenAI","DeepSeek",
+      "自动驾驶","机器人","LLM","文心一言","通义千问","豆包","Kimi",
+      "Sora","AIGC","生成式AI","智能体","AI Agent","英伟达","NVIDIA","多模态",
+      "MCP","NL2SQL","AI芯片","AI大模型","AI产品","AI应用","AI技术"]
 LH = ["民生","教育","健康","医疗","就业","房价","消费","养老","社保","医保",
       "高考","工资","住房","补贴","育儿","退休","养老金","医院","药品","学校","落户"]
 H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -47,7 +48,7 @@ def main():
     seen = set()
     uniq = []
     for it in items:
-        k = it["title"][:10]
+        k = it["title"][:15]
         if k not in seen and it["title"]:
             seen.add(k)
             uniq.append(it)
@@ -74,7 +75,17 @@ def main():
                         if len(ai) >= 5: break
         except: pass
     while len(ai) < 5:
-        ai.append({"title":"AI技术持续演进","desc":"人工智能领域发展","source":"综合"})
+        placeholders = [
+            {"title":"AI大模型持续迭代，应用场景加速落地","desc":"多家科技公司推进大模型研发与商业化","source":"综合"},
+            {"title":"AI芯片竞争白热化，国产替代持续推进","desc":"全球AI芯片市场格局持续变化","source":"综合"},
+            {"title":"AI Agent智能体成为企业数字化新趋势","desc":"越来越多企业探索AI Agent在业务流程中的应用","source":"综合"},
+            {"title":"生成式AI在代码开发领域取得新突破","desc":"AI编程助手能力持续提升","source":"综合"},
+            {"title":"数据智能与AI融合加速数仓智能化","desc":"NL2SQL等技术推动数据分析方式变革","source":"综合"},
+        ]
+        for p in placeholders:
+            if len(ai) >= 5: break
+            if p["title"] not in [a["title"] for a in ai]:
+                ai.append(p)
     while len(hot) < 5 and uniq: hot.append(uniq.pop(0))
     while len(lh) < 5 and uniq: lh.append(uniq.pop(0))
     ai, hot, lh = ai[:5], hot[:5], lh[:5]
