@@ -2,8 +2,8 @@ name: Daily News Push
 
 on:
   schedule:
-    - cron: '0 1 * * *'
-    - cron: '0 15 * * *'
+    - cron: '0 21 * * *'
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 jobs:
