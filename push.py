@@ -181,6 +181,11 @@ def classify(items):
         if normalize_title(p["title"]) not in existing_titles:
             ai.append(p)
 
+    # 最终按热度重新排序（补充的内容可能打乱顺序）
+    ai.sort(key=lambda x: x["hot_num"], reverse=True)
+    hot.sort(key=lambda x: x["hot_num"], reverse=True)
+    lh.sort(key=lambda x: x["hot_num"], reverse=True)
+
     # 热点/民生不足时从剩余items补充
     ai_set = set(id(it) for it in ai)
     lh_set = set(id(it) for it in lh)
