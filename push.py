@@ -167,19 +167,7 @@ def classify(items):
                     ai.append(it)
                     if len(ai) >= 5: break
 
-    # 兜底占位
-    placeholders = [
-        {"title":"AI大模型持续迭代，应用场景加速落地","desc":"多家科技公司推进大模型研发与商业化","source":"综合","hot":"","hot_num":0,"url":""},
-        {"title":"AI芯片竞争白热化，国产替代持续推进","desc":"全球AI芯片市场格局持续变化","source":"综合","hot":"","hot_num":0,"url":""},
-        {"title":"AI Agent智能体成为企业数字化新趋势","desc":"越来越多企业探索AI Agent在业务流程中的应用","source":"综合","hot":"","hot_num":0,"url":""},
-        {"title":"生成式AI在代码开发领域取得新突破","desc":"AI编程助手能力持续提升","source":"综合","hot":"","hot_num":0,"url":""},
-        {"title":"数据智能与AI融合加速数仓智能化","desc":"NL2SQL等技术推动数据分析方式变革","source":"综合","hot":"","hot_num":0,"url":""},
-    ]
-    existing_titles = set(normalize_title(a["title"]) for a in ai)
-    for p in placeholders:
-        if len(ai) >= 5: break
-        if normalize_title(p["title"]) not in existing_titles:
-            ai.append(p)
+    # 不用占位，有多少展示多少
 
     # 最终按热度重新排序（补充的内容可能打乱顺序）
     ai.sort(key=lambda x: x["hot_num"], reverse=True)
@@ -195,6 +183,7 @@ def classify(items):
     while len(hot) < 5 and remaining: hot.append(remaining.pop(0))
     while len(lh) < 5 and remaining: lh.append(remaining.pop(0))
 
+    # 同板块也不用固定5条，有多少展示多少
     return ai[:5], hot[:5], lh[:5]
 
 def build_email(ai, hot, lh):
