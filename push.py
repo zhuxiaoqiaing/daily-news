@@ -9,7 +9,7 @@ SMTP_USER = os.environ.get("SMTP_USER")
 SMTP_PASS = os.environ.get("SMTP_PASS")
 EMAIL_TO = os.environ.get("EMAIL_TO")
 
-# AI关键词 - 必须是2个字符以上，避免误匹配
+# AI关键词
 AI_KW = ["人工智能","大模型","ChatGPT","GPT-4","Claude","Gemini","OpenAI","DeepSeek",
          "自动驾驶","机器人","LLM","文心一言","通义千问","豆包","Kimi",
          "Sora","AIGC","生成式","智能体","AI Agent","英伟达","NVIDIA","多模态",
@@ -35,14 +35,29 @@ def fetch_json(urls, max_retries=3):
             time.sleep(2)
     return None
 
+def parse_hot(s):
+    """解析热度值为数字，用于排序"""
+    if not s:
+        return 0
+    s = str(s).strip()
+    m = re.search(r'([\d.]+)', s)
+    if not m:
+        return 0
+    num = float(m.group(1))
+    if '亿' in s:
+        num *= 100000000
+    elif '万' in s:
+        num *= 10000
+    return num
+
 def normalize_title(title):
-    """标准化标题用于去重：去空格、标点、转小写"""
+    """标准化标题用于去重"""
     t = re.sub(r'[\s\u3000\u00a0]+', '', title)
     t = re.sub(r'[，。！？、；：""''【】（）\[\](){}<>《》·…—\-_,.!?;:\'"\\\/]', '', t)
     return t.lower()
 
 def get_hot_items():
-    """获取所有热搜，严格去重"""
+    """获取所有热搜，严格去重，保留完整信息"""
     raw = []
 
     # 百度热搜
@@ -51,7 +66,14 @@ def get_hot_items():
         for x in (bd.get("data") or [])[:50]:
             t = x.get("title","").strip()
             if t:
-                raw.append({"title":t,"desc":x.get("desc","").strip(),"hot":str(x.get("hot","")),"source":"百度热搜"})
+                raw.append({
+                    "title": t,
+                    "desc": x.get("desc","").strip(),
+                    "hot": str(x.get("hot","")),
+                    "hot_num": parse_hot(x.get("hot","")),
+                    "url": x.get("url",""),
+                    "source": "百度热搜"
+                })
 
     # 微博热搜
     wb = fetch_json(["https://v2.xxapi.cn/api/weibohot","https://api.pearktrue.cn/api/dailyhot/?title=微博热搜"])
@@ -59,19 +81,27 @@ def get_hot_items():
         for x in (wb.get("data") or [])[:50]:
             t = x.get("title","").strip()
             if t:
-                raw.append({"title":t,"desc":x.get("desc","").strip(),"hot":str(x.get("hot","")),"source":"微博热搜"})
+                raw.append({
+                    "title": t,
+                    "desc": x.get("desc","").strip(),
+                    "hot": str(x.get("hot","")),
+                    "hot_num": parse_hot(x.get("hot","")),
+                    "url": x.get("url",""),
+                    "source": "微博热搜"
+                })
 
-    # 严格去重：标准化标题后比较
+    # 按热度降序排序
+    raw.sort(key=lambda x: x["hot_num"], reverse=True)
+
+    # 严格去重
     seen = set()
     uniq = []
     for it in raw:
         nk = normalize_title(it["title"])
-        # 短键取前6字符 + 检查是否子串包含
         short_key = nk[:6] if len(nk) >= 6 else nk
         is_dup = False
         if short_key in seen or nk in seen:
             is_dup = True
-        # 额外检查：如果新标题是已有标题的子串或反之
         if not is_dup:
             for s in seen:
                 if len(s) >= 4 and (s in nk or nk in s):
@@ -86,29 +116,28 @@ def get_hot_items():
     return uniq
 
 def classify(items):
-    """分类到三个板块"""
+    """分类到三个板块，按热度排序"""
     ai, hot, lh = [], [], []
 
     for it in items:
         t = it["title"] + " " + it.get("desc","")
         t_lower = t.lower()
 
-        # AI分类
         if any(k.lower() in t_lower for k in AI_KW):
             ai.append(it)
             continue
-
-        # 民生分类
         if any(k in t for k in LH_KW):
             lh.append(it)
             continue
-
-        # 其余归入热点
         hot.append(it)
+
+    # 按热度排序（已在get_hot_items中排过，但分类后需要重新取前5）
+    ai.sort(key=lambda x: x["hot_num"], reverse=True)
+    hot.sort(key=lambda x: x["hot_num"], reverse=True)
+    lh.sort(key=lambda x: x["hot_num"], reverse=True)
 
     # AI不足5条，从36氪补充
     if len(ai) < 5:
-        needed = 5 - len(ai)
         try:
             d = fetch_json(["https://api.pearktrue.cn/api/dailyhot/?title=36氪"])
             if d:
@@ -118,12 +147,18 @@ def classify(items):
                     if any(k.lower() in tt for k in AI_KW):
                         t = x.get("title","").strip()
                         if normalize_title(t) not in ai_titles:
-                            ai.append({"title":t,"desc":x.get("description","").strip()[:80],"source":"36氪"})
+                            ai.append({
+                                "title": t,
+                                "desc": x.get("description","").strip()[:120],
+                                "hot": "", "hot_num": 0,
+                                "url": x.get("url",""),
+                                "source": "36氪"
+                            })
                             ai_titles.add(normalize_title(t))
                             if len(ai) >= 5: break
         except: pass
 
-    # 再不足，用百度热搜里可能的AI相关补充（二次宽松匹配）
+    # 二次宽松匹配补充
     if len(ai) < 5:
         for it in items:
             if it not in ai:
@@ -134,11 +169,11 @@ def classify(items):
 
     # 兜底占位
     placeholders = [
-        {"title":"AI大模型持续迭代，应用场景加速落地","desc":"多家科技公司推进大模型研发与商业化","source":"综合"},
-        {"title":"AI芯片竞争白热化，国产替代持续推进","desc":"全球AI芯片市场格局持续变化","source":"综合"},
-        {"title":"AI Agent智能体成为企业数字化新趋势","desc":"越来越多企业探索AI Agent在业务流程中的应用","source":"综合"},
-        {"title":"生成式AI在代码开发领域取得新突破","desc":"AI编程助手能力持续提升","source":"综合"},
-        {"title":"数据智能与AI融合加速数仓智能化","desc":"NL2SQL等技术推动数据分析方式变革","source":"综合"},
+        {"title":"AI大模型持续迭代，应用场景加速落地","desc":"多家科技公司推进大模型研发与商业化","source":"综合","hot":"","hot_num":0,"url":""},
+        {"title":"AI芯片竞争白热化，国产替代持续推进","desc":"全球AI芯片市场格局持续变化","source":"综合","hot":"","hot_num":0,"url":""},
+        {"title":"AI Agent智能体成为企业数字化新趋势","desc":"越来越多企业探索AI Agent在业务流程中的应用","source":"综合","hot":"","hot_num":0,"url":""},
+        {"title":"生成式AI在代码开发领域取得新突破","desc":"AI编程助手能力持续提升","source":"综合","hot":"","hot_num":0,"url":""},
+        {"title":"数据智能与AI融合加速数仓智能化","desc":"NL2SQL等技术推动数据分析方式变革","source":"综合","hot":"","hot_num":0,"url":""},
     ]
     existing_titles = set(normalize_title(a["title"]) for a in ai)
     for p in placeholders:
@@ -147,10 +182,13 @@ def classify(items):
             ai.append(p)
 
     # 热点/民生不足时从剩余items补充
-    remaining = [it for it in items if it not in ai and it not in lh and it not in hot]
+    ai_set = set(id(it) for it in ai)
+    lh_set = set(id(it) for it in lh)
+    hot_set = set(id(it) for it in hot)
+    remaining = [it for it in items if id(it) not in ai_set and id(it) not in lh_set and id(it) not in hot_set]
+    remaining.sort(key=lambda x: x["hot_num"], reverse=True)
     while len(hot) < 5 and remaining: hot.append(remaining.pop(0))
-    remaining2 = [it for it in items if it not in ai and it not in lh and it not in hot]
-    while len(lh) < 5 and remaining2: lh.append(remaining2.pop(0))
+    while len(lh) < 5 and remaining: lh.append(remaining.pop(0))
 
     return ai[:5], hot[:5], lh[:5]
 
@@ -166,10 +204,30 @@ def build_email(ai, hot, lh):
         html += '<div style="margin-bottom:24px;"><div style="background:' + s["b"] + ';border-left:4px solid ' + s["c"] + ';padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:12px;"><span style="font-size:18px;">' + s["e"] + '</span><strong style="color:' + s["c"] + ';font-size:16px;margin-left:6px;">' + s["t"] + '</strong><span style="color:#999;font-size:12px;margin-left:8px;">' + str(len(s["i"])) + '条</span></div>'
         for n, it in enumerate(s["i"], 1):
             d = it.get("desc","")
-            if len(d) > 80: d = d[:80] + "..."
-            html += '<div style="padding:10px 14px;border-bottom:1px solid #f0f0f0;"><div style="font-size:15px;line-height:1.6;"><span style="color:' + s["c"] + ';font-weight:bold;margin-right:6px;">' + str(n) + '.</span><strong>' + it["title"] + '</strong></div>'
-            if d: html += '<div style="color:#666;font-size:13px;margin-top:4px;padding-left:22px;">' + d + '</div>'
-            html += '<div style="color:#aaa;font-size:11px;margin-top:4px;padding-left:22px;">' + it.get("source","") + '</div></div>'
+            if len(d) > 120: d = d[:120] + "..."
+            url = it.get("url","")
+            hot_str = it.get("hot","")
+            source = it.get("source","")
+            # 标题：如果有链接就做成超链接
+            title_html = '<a href="' + url + '" style="color:#333;text-decoration:none;">' + it["title"] + '</a>' if url else it["title"]
+            html += '<div style="padding:12px 14px;border-bottom:1px solid #f0f0f0;">'
+            html += '<div style="font-size:15px;line-height:1.6;"><span style="color:' + s["c"] + ';font-weight:bold;margin-right:6px;">' + str(n) + '.</span><strong>' + title_html + '</strong>'
+            # 热度标签
+            if hot_str:
+                html += ' <span style="background:#fff3e0;color:#e65100;font-size:11px;padding:1px 6px;border-radius:10px;margin-left:4px;">🔥' + hot_str + '</span>'
+            html += '</div>'
+            # 描述
+            if d:
+                html += '<div style="color:#555;font-size:13px;margin-top:6px;padding-left:22px;line-height:1.5;">' + d + '</div>'
+            # 底部信息：来源 + 链接
+            bottom_parts = []
+            if source:
+                bottom_parts.append(source)
+            if url:
+                bottom_parts.append('<a href="' + url + '" style="color:#667eea;text-decoration:none;">查看详情 ›</a>')
+            if bottom_parts:
+                html += '<div style="color:#aaa;font-size:11px;margin-top:4px;padding-left:22px;">' + ' · '.join(bottom_parts) + '</div>'
+            html += '</div>'
         html += '</div>'
     html += '<div style="text-align:center;color:#ccc;font-size:11px;padding:16px 0;border-top:1px solid #f0f0f0;">数据来源：百度热搜·微博热搜·36氪 | WorkBuddy自动推送</div></div></div></body></html>'
     return html, today
@@ -203,25 +261,22 @@ def main():
 
     # 打印前10条供调试
     for i, it in enumerate(items[:10]):
-        print(f"  {i+1}. [{it['source']}] {it['title']}")
+        print(f"  {i+1}. [{it['source']}] {it['title']} 🔥{it['hot']}")
 
     ai, hot, lh = classify(items)
     print(f"分类: AI={len(ai)}, 热点={len(hot)}, 民生={len(lh)}")
 
-    # 检查板块间重复
-    all_titles = [it["title"] for it in ai + hot + lh]
-    if len(all_titles) != len(set(all_titles)):
-        print("⚠️ 检测到板块间重复，去重中...")
-        used = set()
-        for section in [ai, hot, lh]:
-            new_section = []
-            for it in section:
-                nk = normalize_title(it["title"])[:8]
-                if nk not in used:
-                    used.add(nk)
-                    new_section.append(it)
-            section.clear()
-            section.extend(new_section)
+    # 板块间去重
+    used = set()
+    for section in [ai, hot, lh]:
+        new_section = []
+        for it in section:
+            nk = normalize_title(it["title"])[:8]
+            if nk not in used:
+                used.add(nk)
+                new_section.append(it)
+        section.clear()
+        section.extend(new_section)
 
     html, today = build_email(ai, hot, lh)
     return send_email(html, today)
