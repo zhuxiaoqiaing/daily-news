@@ -2,8 +2,10 @@ name: Daily News Push
 
 on:
   schedule:
-    - cron: '0 17 * * *'
-    - cron: '0 5 * * *'
+    # 早间推送：北京时间9点 = UTC 1:00，设UTC 0:00利用美国凌晨低峰减少延迟
+    - cron: '0 0 * * *'
+    # 晚间推送：北京时间23点 = UTC 15:00，设UTC 14:00利用美国凌晨减少延迟
+    - cron: '0 14 * * *'
   workflow_dispatch:
 
 jobs:
